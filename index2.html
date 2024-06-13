@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google Drive API Example</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script>
+        let tokenClient;
+        let gapiInited = false;
+        let gisInited = false;
+
+        const CLIENT_ID = '234853465244-dlu5ao6i8iie118minuer0eub4d04vie.apps.googleusercontent.com';
+        const API_KEY = 'AIzaSyCuwfYzEqKpXD0LYjBw2oD9y8GL_PhCXmc';
+        const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
+        const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly';
+        const sheetID = '1pIby0txrOYsDZW0UTLDbG7wLGVHEYIM4GELZfLaeQIo';
+        const range = 'English!A:B';
+
+        let words = [];
+        let currentWordIndex = 0;
+
+        document.getElementById('translation').style.display = 'none';
+
+        function gapiLoaded() {
+            gapi.load('client', initializeGapiClient);
+        }
+
+        async function initializeGapiClient() {
+            await gapi.client.init({
+                apiKey: API_KEY,
+                discoveryDocs: [DISCOVERY_DOC],
+            });
+            gapiInited = true;
+            maybeEnableButtons();
+        }
+
+        function gisLoaded() {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: (response) => handleAuthResponse(response),
+            });
+            gisInited = true;
+            maybeEnableButtons();
+        }
+
+        function maybeEnableButtons() {
+            if (gapiInited && gisInited) {
+                document.getElementById('authorize_button').style.visibility = 'visible';
+                document.getElementById('signout_button').style.visibility = 'visible';
+                const savedToken = localStorage.getItem('access_token');
+                if (savedToken) {
+                    gapi.client.setToken({access_token: savedToken});
+                    fetchWords();
+                }
+            }
+        }
+
+        function handleAuthClick() {
+            tokenClient.callback = async (resp) => {
+                if (resp.error !== undefined) {
+                    throw (resp);
+                }
+                document.getElementById('authorize_button').innerText = 'Refresh';
+                localStorage.setItem('access_token', resp.access_token);
+                await fetchWords();
+            };
+
+            if (gapi.client.getToken() === null) {
+                tokenClient.requestAccessToken({prompt: 'consent'});
+            } else {
+                tokenClient.requestAccessToken({prompt: ''});
+            }
+        }
+
+        function handleSignoutClick() {
+            const token = gapi.client.getToken();
+            if (token !== null) {
+                google.accounts.oauth2.revoke(token.access_token, () => {
+                    localStorage.removeItem('access_token');
+                    gapi.client.setToken('');
+                    document.getElementById('content').innerText = '';
+                    document.getElementById('authorize_button').innerText = 'Authorize';
+                });
+            }
+        }
+
+        async function fetchWords() {
+            const response = await gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: sheetID,
+                range: range,
+            });
+            words = response.result.values.map(row => ({ english: row[0], turkish: row[1] }));
+            showRandomWord();
+        }
+
+        function showRandomWord() {
+            currentWordIndex = Math.floor(Math.random() * words.length);
+            document.getElementById('word').innerText = words[currentWordIndex].english;
+            document.getElementById('translation').innerText = words[currentWordIndex].turkish;
+            document.getElementById('translation').style.display = 'none';
+        }
+
+        function showTranslation() {
+            const translationElement = document.getElementById('translation');
+            if (translationElement.style.display === 'none') {
+                translationElement.style.display = 'block';
+            } else {
+                showRandomWord();
+            }
+        }
+    </script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: white;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            flex-direction: column;
+        }
+        .container {
+            text-align: center;
+        }
+        .circle {
+            width: 300px;
+            height: 300px;
+            background-color: black;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 24px;
+            flex-direction: column;
+            cursor: pointer;
+        }
+        .translation {
+            font-size: 18px;
+            color: lightgray;
+        }
+        h1 {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <button id="authorize_button" style="visibility: hidden" onclick="handleAuthClick()">Authorize</button>
+    <button id="signout_button" style="visibility: hidden" onclick="handleSignoutClick()">Sign Out</button>
+    <pre id="content"></pre>
+
+    <div class="container">
+        <h1>ENGLISH DICTIONARY</h1>
+        <div class="circle" onclick="showTranslation()">
+            <div class="word" id="word">Click to Load</div>
+            <div class="translation" id="translation"></div>
+        </div>
+    </div>
+    <script>
+        window.onload = function() {
+            gapiLoaded();
+            gisLoaded();
+        };
+    </script>
+</body>
+</html>
